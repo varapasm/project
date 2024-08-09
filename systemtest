@@ -1,0 +1,168 @@
+#include <Arduino.h>//อันนี้ไม่น่าต้องใส่กุรันในvscode มันเลยมี เเต่ถ้าเอาออกละรันไม่ไก้ฏ็ใส่ วก lib เชคเอาว่าโหลดอันไหนกุม่ายหวายหล่าววววววว compile เเล้วรันได้ไม่ได้เเจ้งเเละเบื่องต้นลองเเก้เอาก่อน
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+//ตรง set only day เปลียนวันก่อนรันโค้ดด้วยเอาวันที่รัน เเลเชคwifi pass duay
+// WiFi credentials
+const char* ssid = "Bingus";
+const char* password = "123456789";
+const long twominsint = 120000;
+// Pin for LED status indication
+const int ledstate = 2; // Make sure this pin is defined in your hardware setup
+
+// End point
+const char* serverName = "https://api-6150245302454565789.nortezh-1.nortezh.com/iot/master.report";
+const char* masterSecret = "Yaphaivomeezai9aihaiM7ohch0oph";
+float vl = 0.1;
+float cr = 0.2;
+float pf = 0.01;
+float ene = 1.0;
+// Variables to store data
+; // Energy value
+
+// set only day 
+int year = 2024;
+int month = 8;
+int day = 9;
+int hour = 0;
+int minute = 0;
+int second = 0;
+int millisecond = 0; // Initialize millisecond
+
+unsigned long previousMillis = 0;
+const long interval = 1000; // Update every second
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(ledstate, OUTPUT); // Set the LED pin as an output
+
+  // Connect to WiFi
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    digitalWrite(ledstate, HIGH);
+    delay(50);
+    digitalWrite(ledstate, LOW);
+    delay(50);
+    Serial.print(".");
+  }
+  digitalWrite(ledstate, HIGH);
+  Serial.println("\nWiFi connected");
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+vl += 0.1;
+cr += 0.2;
+pf += 0.01;
+ene += 1.0;
+  if (currentMillis - previousMillis >= twominsint) {
+    previousMillis = currentMillis;
+    millisecond += 1000; // Increment milliseconds (1 second)
+
+    if (millisecond >= 1000) {
+      millisecond = 0;
+      second++;
+    }
+    if (second >= 60) {
+      second = 0;
+      minute++;
+    }
+    if (minute >= 60) {
+      minute = 0;
+      hour++;
+    }
+    if (hour >= 24) {
+      hour = 0;
+      day++;
+      // Adjust for month and year if needed
+    }
+    if (day > 31) { // Simplified day overflow handling
+      day = 1;
+      month++;
+      // Adjust for month and year if needed
+    }
+    if (month > 12) {
+      month = 1;
+      year++;
+    }
+
+    // Format time as ISO 8601
+    String timeString = String(year) + "-" +
+                        (month < 10 ? "0" : "") + String(month) + "-" +
+                        (day < 10 ? "0" : "") + String(day) + "T" +
+                        (hour < 10 ? "0" : "") + String(hour) + ":" +
+                        (minute < 10 ? "0" : "") + String(minute) + ":" +
+                        (second < 10 ? "0" : "") + String(second) + "." +
+                        (millisecond / 1000) + "+07:00";
+
+    // Create JSON payload
+    String jsonPayload = "{"
+                          "\"items\": ["
+                            "{"
+                              "\"at\": \"" + timeString + "\","
+                              "\"type\": \"voltage\","
+                              "\"deviceToken\": \"0000\","
+                              "\"value\": \"" + String(vl, 2) + "\""
+                            "},"
+                            "{"
+                              "\"at\": \"" + timeString + "\","
+                              "\"type\": \"current\","
+                              "\"deviceToken\": \"0000\","
+                              "\"value\": \"" + String(cr, 2) + "\""
+                            "},"
+                            "{"
+                              "\"at\": \"" + timeString + "\","
+                              "\"type\": \"apparent_power\","
+                              "\"deviceToken\": \"0000\","
+                              "\"value\": \"" + String(0.8, 2) + "\""
+                            "},"
+                            "{"
+                              "\"at\": \"" + timeString + "\","
+                              "\"type\": \"reactive_power\","
+                              "\"deviceToken\": \"0000\","
+                              "\"value\": \"" + String(9.8, 2) + "\""
+                            "},"
+                            "{"
+                              "\"at\": \"" + timeString + "\","
+                              "\"type\": \"power_factor\","
+                              "\"deviceToken\": \"0000\","
+                              "\"value\": \"" + String(pf, 2) + "\""
+                            "},"
+                            "{"
+                              "\"at\": \"" + timeString + "\","
+                              "\"type\": \"kWh\","
+                              "\"deviceToken\": \"0000\","
+                              "\"value\": \"" + String(ene, 2) + "\""
+                            "}"
+                          "]"
+                        "}";
+
+    // Print the JSON payload
+    Serial.println(jsonPayload);
+
+    // Send the data to the server
+    if (WiFi.status() == WL_CONNECTED) {
+      WiFiClientSecure client;
+      HTTPClient http;
+
+      client.setInsecure(); // Use with caution: this disables SSL/TLS verification
+
+      http.begin(client, serverName);
+      http.addHeader("X-Master-Secret", masterSecret);
+      http.addHeader("Content-Type", "application/json");
+
+      int httpResponseCode = http.POST(jsonPayload);
+      delay(120000);
+      if (httpResponseCode > 0) {
+        String response = http.getString();
+        Serial.println("Response: " + response);
+      } else {
+        Serial.print("Error on sending POST: ");
+        Serial.println(httpResponseCode);
+      }
+
+      http.end();
+    }
+  }
+}
