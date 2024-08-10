@@ -1,0 +1,82 @@
+unsigned long previousMillis = 0;
+const long twominsint = 15000; // 2 minutes in milliseconds
+
+// Initialize variables for measurements
+float vl = 0.0;
+float cr = 0.0;
+float pf = 0.0;
+float ene = 0.0;
+
+// Time-related variables
+int year = 2024;
+int month = 8;
+int day = 9;
+int hour = 0;
+int minute = 0;
+int second = 0;
+int millisecond = 0;
+
+void setup() {
+  Serial.begin(115200);
+}
+
+void loop() {
+  unsigned long currentMillis = millis();
+  
+  // Increment values
+  vl += 0.1;  // Increment voltage
+  cr += 0.2;  // Increment current
+  pf += 0.01; // Increment power factor
+  ene += 1.0; // Increment energy
+
+  if (currentMillis - previousMillis >= twominsint) {
+    previousMillis = currentMillis;
+
+   
+
+    // Create JSON payload
+    String jsonPayload = "{"
+                          "\"items\": ["
+                            "{"
+                              "\"at\":\"voltage\","
+                              "\"type\": \"voltage\","
+                              "\"value\": " + String(vl, 2) + ","
+                              "\"deviceToken\": \"0000\""
+                            "},"
+                            "{"
+                              "\"at\": \"current\","
+                              "\"type\": \"current\","
+                              "\"value\": " + String(cr, 2) + ","
+                              "\"deviceToken\": \"0000\""
+                            "},"
+                            "{"
+                              "\"at\": \"apparent_power\","
+                              "\"type\": \"apparent_power\","
+                              "\"value\": 15," // Directly using a fixed value for apparent power
+                              "\"deviceToken\": \"0000\""
+                            "},"
+                            "{"
+                              "\"at\": \"reactive_power\","
+                              "\"type\": \"reactive_power\","
+                              "\"value\": 9.8," // Directly using a fixed value for reactive power
+                              "\"deviceToken\": \"0000\""
+                            "},"
+                            "{"
+                              "\"at\": \"power_factor\","
+                              "\"type\": \"power_factor\","
+                              "\"value\": " + String(pf, 2) + ","
+                              "\"deviceToken\": \"0000\""
+                            "},"
+                            "{"
+                              "\"at\": \"kWh\","
+                              "\"type\": \"kWh\","
+                              "\"value\": " + String(ene, 2) + ","
+                              "\"deviceToken\": \"0000\""
+                            "}"
+                          "]"
+                        "}";
+
+    // Print the JSON payload for debugging
+    Serial.println(jsonPayload);
+  }
+}
