@@ -1,0 +1,131 @@
+#include <SoftwareSerial.h>
+
+byte DLT645_Checksum(byte text[], uint8_t siz);
+boolean DLT645_read(uint8_t siz);
+void DLT645_write(byte data[], uint8_t siz);
+boolean DLT645_init(void);
+boolean read_Meter(void);
+
+/*------------METER VARIABLE-----------*/
+#define INTERVAL_METER 3000
+#define SERIAL1_RX 23
+#define SERIAL1_TX 22
+#define SERIAL2_RX 4
+#define SERIAL2_TX 2
+SoftwareSerial  Meter(SERIAL1_RX, SERIAL1_TX);
+SoftwareSerial  OLTCSerial(SERIAL2_RX, SERIAL2_TX);
+uint8_t sizeof_PHASE   = 51;
+byte DLT645_Data[100];
+byte DLT645_Configure_1[] = {0xFE,0xFE,0xFE,0xFE,0x68,0x99,0x99,0x99,0x99,0x99,0x99,0x68,0x23,0x0A,0x60,0x00,0x34,0x12,0x78,0x56,0xBC,0x9A,0xF0,0xDE,0x2B,0x16};
+byte DLT645_Configure_2[] = {0xFE,0xFE,0xFE,0xFE,0x68,0x99,0x99,0x99,0x99,0x99,0x99,0x68,0x23,0x02,0x56,0x00,0xE1,0x16};
+byte DLT645_HEAD[]        = {0xFE,0xFE,0xFE,0xFE,0x68,0x99,0x99,0x99,0x99,0x99,0x99,0x68,0x23,0x02};
+byte DLT645_RTC[]         = {0x59,0x00,0xE4,0x16};
+byte DLT645_PHASE_1[]     = {0x61,0x00,0xEC,0x16};
+byte DLT645_FOOTER        = 0x16;
+
+typedef struct{ 
+  float V1, I1, P1, Q1, S1, pf1, f1, Vdc1, Idc1;
+  uint32_t importP1;
+} TxPacket;
+
+TxPacket tx;
+
+char buffer[10]; // Buffer to hold the string
+
+void setup() {
+  Serial.begin(115200);
+  Meter.begin(9600);
+  OLTCSerial.begin(9600);
+  Serial.println("Program start");
+  while(!DLT645_init()) {Serial.println("Meter Fail");}
+
+  // while(!OLTCSerial.available()){
+  //   Serial.println("OLTC Serial Fail");
+  // }
+}
+
+void loop() {
+  if(read_Meter()){
+    Serial.println("****************************");
+    Serial.print("V1: "); Serial.println(tx.V1);
+    Serial.print("I1: "); Serial.println(tx.I1);
+    Serial.print("P1: "); Serial.println(tx.P1);
+    Serial.print("Q1: "); Serial.println(tx.Q1);
+    Serial.print("S1: "); Serial.println(tx.S1);
+    Serial.print("pf1: "); Serial.println(tx.pf1);
+    Serial.print("f1: "); Serial.println(tx.f1);
+    Serial.print("Vdc1: "); Serial.println(tx.Vdc1);
+    Serial.print("Idc1: "); Serial.println(tx.Idc1);
+    Serial.print("importP1: "); Serial.println(tx.importP1);
+    //dtostrf(tx.V1, 6, 2, buffer);
+    OLTCSerial.write(tx.V1);
+  }
+  else{Serial.println("Read Meter Fail");}
+  delay(1000);
+}
+
+byte DLT645_Checksum(byte text[], uint8_t siz) {
+  byte CS = 0x00;
+  for(int i=4; i<(siz-2); i++) {
+    CS += text[i];
+  }
+  return CS;
+}
+
+boolean DLT645_read(uint8_t siz) {
+  memset(DLT645_Data, 0x00, sizeof(DLT645_Data));
+  unsigned long currentMillis = millis();
+  while((millis() - currentMillis) < 3000) {
+    if(Meter.available()){
+      if(Meter.readBytes(DLT645_Data, siz) == siz){
+        if(DLT645_Checksum(DLT645_Data,siz) == DLT645_Data[siz-2]){
+          return 1;
+        }
+      }
+    }
+  }
+  return 0;
+}
+
+void DLT645_write(byte data[], uint8_t siz) {
+  Meter.write(data, siz);
+}
+
+boolean DLT645_init(void) {
+  for(uint8_t i=0; i<3; i++) {
+    DLT645_write(DLT645_Configure_1, sizeof(DLT645_Configure_1));
+    if(DLT645_read(18)){
+      DLT645_write(DLT645_Configure_2, sizeof(DLT645_Configure_2));
+      if(DLT645_read(23)){
+        return 1;
+      }
+    }
+  }
+  return 0;
+}
+
+boolean read_Meter(void) {
+  uint8_t chk = 0;
+  DLT645_write(DLT645_HEAD, sizeof(DLT645_HEAD)); DLT645_write(DLT645_PHASE_1, sizeof(DLT645_PHASE_1));
+  if(DLT645_read(sizeof_PHASE)) {
+    chk++;
+    tx.V1   = (((uint32_t)DLT645_Data[17]<< 8) | ((uint32_t)DLT645_Data[16])) /100.0;
+    tx.I1   = (((uint32_t)DLT645_Data[19]<< 8) | ((uint32_t)DLT645_Data[18])) /1000.0;
+    tx.P1   = (((uint32_t)DLT645_Data[23]<<24) | ((uint32_t)DLT645_Data[22]<<16) | ((uint32_t)DLT645_Data[21]<< 8) | ((uint32_t)DLT645_Data[20]));
+    tx.Q1   = (((uint32_t)DLT645_Data[27]<<24) | ((uint32_t)DLT645_Data[26]<<16) | ((uint32_t)DLT645_Data[25]<< 8) | ((uint32_t)DLT645_Data[24]));
+    tx.S1   = (((uint32_t)DLT645_Data[31]<<24) | ((uint32_t)DLT645_Data[30]<<16) | ((uint32_t)DLT645_Data[29]<< 8) | ((uint32_t)DLT645_Data[28])) /100.0;
+    tx.pf1  = (((uint32_t)DLT645_Data[33]<< 8) | ((uint32_t)DLT645_Data[32]));
+    tx.f1   = (((uint32_t)DLT645_Data[35]<< 8) | ((uint32_t)DLT645_Data[34]))/100.0;
+    tx.Vdc1 = (((uint32_t)DLT645_Data[39]<<24) | ((uint32_t)DLT645_Data[38]<<16) | ((uint32_t)DLT645_Data[37]<< 8) | ((uint32_t)DLT645_Data[36]));
+    tx.Idc1 = (((uint32_t)DLT645_Data[43]<<24) | ((uint32_t)DLT645_Data[42]<<16) | ((uint32_t)DLT645_Data[41]<< 8) | ((uint32_t)DLT645_Data[40]));
+    tx.importP1 = (((uint32_t)DLT645_Data[47]<<24) | ((uint32_t)DLT645_Data[46]<<16) | ((uint32_t)DLT645_Data[45]<< 8) | ((uint32_t)DLT645_Data[44]));
+  }
+  if(tx.P1     > 0xFF000000) {tx.P1    = (tx.P1    - 0xFFFFFFFF) /100.0;    } else { tx.P1    = tx.P1   /100.0; }
+//if(tx.Q1     > 0xFF000000) {tx.Q1    = (tx.Q1    - 0xFFFFFFFF) /100.0;    } else { tx.Q1    = tx.Q1   /100.0; }
+  if(tx.pf1    > 0x2710    ) {tx.pf1   = (tx.pf1   - 0xFFFF)     /10000.0;  } else { tx.pf1   = tx.pf1  /10000.0;}    // (- = L), (+ = C)  
+  if(tx.pf1    < 0.0       ) {tx.Q1    = (tx.Q1    * -1)         /100.0;    } else { tx.Q1    = tx.Q1  /100.0;}
+  if(tx.Vdc1   > 0xFF000000) {tx.Vdc1  = (tx.Vdc1  - 0xFFFFFFFF) /65535.0;  } else { tx.Vdc1  = tx.Vdc1 /65535.0; }
+  if(tx.Idc1   > 0xFF000000) {tx.Idc1  = (tx.Idc1  - 0xFFFFFFFF) /65535.0;  } else { tx.Idc1  = tx.Idc1 /65535.0; }
+  if(chk == 1) {return 1;}
+  return 0;
+}
